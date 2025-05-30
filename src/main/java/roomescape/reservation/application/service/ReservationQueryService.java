@@ -1,0 +1,89 @@
+package roomescape.reservation.application.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import roomescape.common.domain.DomainTerm;
+import roomescape.common.exception.NotFoundException;
+import roomescape.reservation.application.dto.AvailableReservationTimeServiceRequest;
+import roomescape.reservation.application.dto.AvailableReservationTimeServiceResponse;
+import roomescape.reservation.application.dto.ReservationSearchRequest;
+import roomescape.reservation.application.dto.ThemeToBookCountServiceResponse;
+import roomescape.reservation.domain.Reservation;
+import roomescape.reservation.domain.ReservationDate;
+import roomescape.reservation.domain.ReservationRepository;
+import roomescape.time.application.service.ReservationTimeQueryService;
+import roomescape.time.domain.ReservationTime;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ReservationQueryService {
+
+    private final ReservationRepository reservationRepository;
+    private final ReservationTimeQueryService reservationTimeQueryService;
+
+    public List<Reservation> getAll() {
+        return reservationRepository.findAll();
+    }
+
+    public List<AvailableReservationTimeServiceResponse> getTimesWithAvailability(
+            final AvailableReservationTimeServiceRequest request) {
+        final List<ReservationTime> allTimes = reservationTimeQueryService.getAll();
+
+        final Set<Long> bookedTimeIds = new HashSet<>(reservationRepository.findTimeIdByParams(
+                request.date(),
+                request.themeId())
+        );
+
+        final List<AvailableReservationTimeServiceResponse> responses = new ArrayList<>();
+
+        for (final ReservationTime reservationTime : allTimes) {
+            final boolean isBooked = bookedTimeIds.contains(reservationTime.getId());
+            responses.add(new AvailableReservationTimeServiceResponse(
+                    reservationTime,
+                    isBooked));
+        }
+
+        return responses;
+    }
+
+    public List<ThemeToBookCountServiceResponse> getRanking(final ReservationDate startDate,
+                                                            final ReservationDate endDate,
+                                                            final int bookCount) {
+
+        return reservationRepository.findThemesToBookedCount(startDate, endDate, bookCount)
+                .stream()
+                .map(current -> new ThemeToBookCountServiceResponse(current.theme(), current.bookedCount()))
+                .toList();
+    }
+
+    public List<Reservation> getByParams(final ReservationSearchRequest request) {
+        return reservationRepository.findAllByParams(
+                request.userId(),
+                request.themeId(),
+                request.dateFrom(),
+                request.dateTo()
+        );
+    }
+
+    public boolean existsByTimeId(final Long timeId) {
+        return reservationRepository.existsByParams(timeId);
+    }
+
+    public boolean existsByParams(final ReservationDate date,
+                                  final Long timeId,
+                                  final Long themeId) {
+        return reservationRepository.existsByParams(date, timeId, themeId);
+    }
+
+    public Reservation findById(final Long id) {
+        return reservationRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException(DomainTerm.RESERVATION_ID, id));
+    }
+}
